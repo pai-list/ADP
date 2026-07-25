@@ -1,7 +1,7 @@
 // Mock for Cloudflare Workers types - minimal re-exports to avoid conflicts
-// Use types from @cloudflare/workers-types
+import type * as CfWorkers from '@cloudflare/workers-types';
 
-// Re-export needed types - use type-only imports to avoid conflicts
+// Re-export needed types
 export type {
   Env,
   D1Database,
@@ -14,9 +14,10 @@ export type {
   DurableObjectState,
   DurableObjectStorage,
   Ai,
+  DurableObjectTransaction,
 } from '@cloudflare/workers-types';
 
-// Add any custom types needed for testing
+// Add custom types for testing
 export interface DurableObjectTransaction {
   get<T = unknown>(key: string): Promise<any | undefined>;
   get<T = unknown>(keys: string[]): Promise<Map<string, any>>;
@@ -25,7 +26,18 @@ export interface DurableObjectTransaction {
   delete(key: string): Promise<void>;
 }
 
-// Mock the crypto object for tests
+// Mock DurableObject base class for testing
+export class DurableObject<Env = any, Props = {}> {
+  protected ctx: any;
+  protected env: any;
+
+  constructor(ctx: any, env: any) {
+    this.ctx = ctx;
+    this.env = env;
+  }
+}
+
+// Mock crypto for tests
 Object.defineProperty(globalThis, 'crypto', {
   value: {
     getRandomValues: (arr: Uint8Array) => {
@@ -44,13 +56,5 @@ Object.defineProperty(globalThis, 'crypto', {
   configurable: true
 });
 
-// Mock DurableObject base class for testing
-export class DurableObject<Env = any, Props = {}> {
-  protected ctx: any;
-  protected env: Env;
-  
-  constructor(ctx: any, env: Env) {
-    this.ctx = ctx;
-    this.env = env;
-  }
-}
+// Make vitest globals available
+import { vi } from 'vitest';
