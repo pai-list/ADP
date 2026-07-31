@@ -142,12 +142,73 @@ export class Room extends DurableObject<Env> {
       case 'memory-grant':
         this.handleMemoryGrant(senderDID, message);
         break;
+      case 'a2a-message':
+        this.handleA2AMessage(senderDID, message);
+        break;
+      case 'a2a-task':
+        this.handleA2ATask(senderDID, message);
+        break;
       case 'leave':
         this.leave(senderDID);
         break;
       default:
         console.warn('Unknown message type:', message.type);
     }
+  }
+
+  /**
+   * A2A interop — an agent sends an A2A-format message (parts, task ref)
+   * through the ADP room; we validate, attach the ADP session context,
+   * and forward to the recipient.
+   */
+  private handleA2AMessage(senderDID: string, message: any): void {
+    const recipientDID = message.recipient?.agentId || message.target;
+    if (!recipientDID || !this.agents.has(recipientDID)) {
+      console.warn(`[A2A] Recipient ${recipientDID} not in room`);
+      return;
+    }
+    const sender = this.agents.get(senderDID);
+    const a2aMessage = {
+      messageId: message.messageId || `${senderDID}-${Date.now()}`,
+      a2aVersion: message.a2aVersion || '0.2.1',
+      sender: { agentId: senderDID, name: sender?.displayName },
+      recipient: { agentId: recipientDID },
+      parts: message.parts || [],
+      context: message.context,
+      'x-adp': {
+        sessionId: message['x-adp']?.sessionId || this.findSessionFor(senderDID, recipientDID),
+        toolsGranted: message['x-adp']?.toolsGranted,
+      },
+    };
+    const recipient = this.agents.get(recipientDID);
+    recipient?.ws.send(JSON.stringify({ type: 'a2a-message', payload: a2aMessage }));
+  }
+
+  /** Public RPC — called by the worker's HTTP /a2a/tasks endpoint. */
+  async rpcA2AMessage(senderDID: string, message: any): Promise<void> {
+    this.handleA2AMessage(senderDID, message);
+  }
+
+  /** A2A task lifecycle — route tasks/send-style requests to the recipient. */
+  private handleA2ATask(senderDID: string, message: any): void {
+    const recipientDID = message.recipient?.agentId || message.target;
+    if (!recipientDID || !this.agents.has(recipientDID)) {
+      console.warn(`[A2A] Task recipient ${recipientDID} not in room`);
+      return;
+    }
+    const recipient = this.agents.get(recipientDID);
+    recipient?.ws.send(JSON.stringify({ type: 'a2a-task', payload: message.payload || message }));
+  }
+
+  /** Find an active session between two agents (or empty). */
+  private findSessionFor(a: string, b: string): string {
+    for (const [sessionId, session] of this.sessions) {
+      if ((session.initiator === a && session.responder === b) ||
+          (session.initiator === b && session.responder === a)) {
+        return sessionId;
+      }
+    }
+    return '';
   }
 
   private handleDiscover(senderDID: string, message: any): void {
