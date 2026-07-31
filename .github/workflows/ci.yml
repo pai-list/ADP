@@ -1,0 +1,99 @@
+name: CI
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+  security-events: write
+  packages: write
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  detect:
+    name: Detect Changes
+    uses: ./.pai-universe/.github/workflows/reusable/detect-changes.yml
+    with:
+      github-token: ${{ github.token }}
+
+  mono-ci:
+    name: Monorepo CI (Turbo)
+    needs: detect
+    if: needs.detect.outputs.mono == 'true'
+    uses: ./.pai-universe/.github/workflows/reusable/node-ci.yml
+    with:
+      turbo-targets: "build test lint typecheck"
+      working-directory: .
+    secrets:
+      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  cf-workers-ci:
+    name: CF Workers CI
+    needs: detect
+    if: needs.detect.outputs.cf-workers == 'true'
+    uses: ./.pai-universe/.github/workflows/reusable/cf-workers-ci.yml
+    with:
+      working-directory: .
+      deploy-preview: true
+    secrets:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+  security-scan:
+    name: Security Scan
+    needs: detect
+    uses: ./.pai-universe/.github/workflows/reusable/security-scan.yml
+    with:
+      working-directory: .
+      language: "typescript"
+
+  dependency-audit:
+    name: Dependency Audit
+    needs: detect
+    if: needs.detect.outputs.deps == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: "9", run_install: false }
+      - uses: actions/setup-node@v4
+        with: { node-version: "22", cache: 'pnpm' }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm audit --prod --json > audit.json 2>&1 || true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dependency-audit
+          path: audit.json
+
+  all-checks:
+    name: All Checks Passed
+    needs: [detect, mono-ci, cf-workers-ci, security-scan, dependency-audit]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check results
+        run: |
+          FAILED=0
+          for job in mono-ci cf-workers-ci security-scan dependency-audit; do
+            RESULT="${{ needs.$job.result }}"
+            if [[ "$RESULT" == "failure" || "$RESULT" == "cancelled" ]]; then
+              echo "❌ $job: $RESULT"
+              FAILED=1
+            elif [[ "$RESULT" == "success" ]]; then
+              echo "✅ $job: $RESULT"
+            else
+              echo "⏭️  $job: $RESULT (skipped)"
+            fi
+          done
+          if [[ $FAILED -eq 1 ]]; then
+            echo "::error::One or more required checks failed"
+            exit 1
+          fi
+          echo "✅ All checks passed"
