@@ -2,7 +2,11 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { upgradeWebSocket } from 'hono/cloudflare-workers';
+import type { WSContext } from 'hono/ws';
 import { adpSessionToAgentCard, validateA2AMessage, adpSessionToA2ATask } from '../a2a/bridge.js';
+import { ADPRoom } from './Room.js';
+
+export { ADPRoom };
 
 interface Env {
   ADP_ROOM: DurableObjectNamespace;
@@ -13,7 +17,9 @@ interface Env {
 
 /** Typed view of the Room Durable Object for cross-calls. */
 interface RoomStub {
-  join(did: string, ws: WebSocket, agentInfo?: Record<string, unknown>): Promise<void>;
+  join(did: string, wsStub: { send: (m: string) => void; readyState: number }, agentInfo?: Record<string, unknown>): Promise<void>;
+  receiveMessage(did: string, data: string): Promise<void>;
+  leave(did: string): Promise<void>;
   rpcA2AMessage(senderDID: string, message: Record<string, unknown>): Promise<void>;
 }
 
@@ -76,21 +82,37 @@ app.post('/a2a/tasks', async (c) => {
 
 // WebSocket endpoint for ADP signaling
 app.get('/ws', upgradeWebSocket((c) => {
+  let did = 'unknown';
+  let roomName = 'default';
+  let stub: RoomStub | null = null;
+
   return {
     onMessage: async (evt, ws) => {
       try {
         const data = evt.data instanceof Blob ? await evt.data.text() : String(evt.data);
         const message = JSON.parse(data);
-        const room = c.env.ADP_ROOM.idFromName(message.room || 'default');
-        const stub = c.env.ADP_ROOM.get(room) as unknown as RoomStub;
-        await stub.join(message.did || 'unknown', ws, message);
+        if (!stub) {
+          did = message.did || 'unknown';
+          roomName = message.room || 'default';
+          const room = c.env.ADP_ROOM.idFromName(roomName);
+          stub = c.env.ADP_ROOM.get(room) as unknown as RoomStub;
+          const wsStub = {
+            send: (m: string) => ws.send(m),
+            readyState: ws.readyState,
+          };
+          await stub.join(did, wsStub, message);
+        } else {
+          await stub.receiveMessage(did, data);
+        }
       } catch (error) {
         console.error('Message parse error:', error);
         ws.send(JSON.stringify({ type: 'error', message: 'Invalid message format' }));
       }
     },
-    onClose: () => {
-      // Handle cleanup if needed
+    onClose: async () => {
+      if (stub) {
+        await stub.leave(did);
+      }
     }
   };
 }));

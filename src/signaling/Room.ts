@@ -1,5 +1,13 @@
 import { DurableObject } from 'cloudflare:workers';
-import { WebSocket } from 'ws';
+
+/** Minimal WebSocket-stub interface the worker passes in for outbound sends. */
+interface WsStub {
+  send: (m: string) => void;
+  readyState: number;
+}
+
+// Mirror open WebSocket state without importing `ws`.
+const WS_OPEN = 1;
 
 interface AgentInfo {
   did: string;
@@ -12,7 +20,7 @@ interface AgentInfo {
   workspace: string;
   proof: string;
   joinedAt: number;
-  ws: WebSocket;
+  ws: WsStub;
 }
 
 interface Session {
@@ -38,7 +46,7 @@ interface Ai {
   run(model: string, options: { text?: string[]; prompt?: string; stream?: boolean }): Promise<any>;
 }
 
-export class Room extends DurableObject<Env> {
+export class ADPRoom extends DurableObject<Env> {
   private agents: Map<string, AgentInfo> = new Map();
   private sessions: Map<string, Session> = new Map();
   private messageQueue: Map<string, any[]> = new Map();
@@ -54,7 +62,7 @@ export class Room extends DurableObject<Env> {
     });
   }
 
-  async join(did: string, ws: WebSocket, agentInfo?: Partial<AgentInfo>): Promise<void> {
+  async join(did: string, ws: WsStub, agentInfo?: Partial<AgentInfo>): Promise<void> {
     const info: AgentInfo = {
       did,
       displayName: agentInfo?.displayName || `agent-${did.slice(-8)}`,
@@ -98,25 +106,39 @@ export class Room extends DurableObject<Env> {
       agents: agentList,
       yourDID: did
     }));
+  }
 
-    // Handle incoming messages
-    ws.onmessage = (event) => {
-      try {
-        const data = event.data instanceof Blob ? event.data.text().then(t => JSON.parse(t)) : String(event.data);
-        if (typeof data === 'string') {
-          const message = JSON.parse(data);
-          this.handleMessage(did, message);
-        } else {
-          data.then(message => this.handleMessage(did, message));
+  /**
+   * Called by the worker for every incoming WebSocket message.
+   * Dispatch to the same handler pipeline as before.
+   */
+  async receiveMessage(senderDID: string, data: string): Promise<void> {
+    try {
+      const message = JSON.parse(data);
+      this.handleMessage(senderDID, message);
+    } catch (error) {
+      console.error('Message parse error:', error);
+    }
+  }
+
+  async leave(did: string): Promise<void> {
+    const agent = this.agents.get(did);
+    if (agent) {
+      this.agents.delete(did);
+      this.broadcast({
+        type: 'agent-left',
+        protocol: 'adp-v1',
+        agent: { did, displayName: agent.displayName }
+      }, did);
+      
+      // Clean up sessions involving this agent
+      for (const [sessionId, session] of this.sessions) {
+        if (session.initiator === did || session.responder === did) {
+          session.status = 'revoked';
         }
-      } catch (error) {
-        console.error('Message parse error:', error);
       }
-    };
-
-    ws.onclose = () => {
-      this.leave(did);
-    };
+      this.persist();
+    }
   }
 
   private handleMessage(senderDID: string, message: any): void {
@@ -340,29 +362,9 @@ export class Room extends DurableObject<Env> {
     });
   }
 
-  private leave(did: string): void {
-    const agent = this.agents.get(did);
-    if (agent) {
-      this.agents.delete(did);
-      this.broadcast({
-        type: 'agent-left',
-        protocol: 'adp-v1',
-        agent: { did, displayName: agent.displayName }
-      }, did);
-      
-      // Clean up sessions involving this agent
-      for (const [sessionId, session] of this.sessions) {
-        if (session.initiator === did || session.responder === did) {
-          session.status = 'revoked';
-        }
-      }
-      this.persist();
-    }
-  }
-
   private sendToAgent(did: string, message: any): void {
     const agent = this.agents.get(did);
-    if (agent && agent.ws.readyState === WebSocket.OPEN) {
+    if (agent && agent.ws.readyState === WS_OPEN) {
       agent.ws.send(JSON.stringify(message));
     } else {
       // Queue for when agent reconnects
@@ -374,7 +376,7 @@ export class Room extends DurableObject<Env> {
 
   private broadcast(message: any, excludeDID?: string): void {
     for (const [did, agent] of this.agents) {
-      if (did !== excludeDID && agent.ws.readyState === WebSocket.OPEN) {
+      if (did !== excludeDID && agent.ws.readyState === WS_OPEN) {
         agent.ws.send(JSON.stringify(message));
       }
     }

@@ -1,7 +1,10 @@
 {
   "name": "adp-signaling",
   "main": "src/signaling/worker.ts",
-  "compatibility_date": "2024-12-01",
+  "compatibility_date": "2025-06-01",
+  "routes": [
+    { "pattern": "signaling.axiomid.app/*", "zone_name": "axiomid.app" }
+  ],
   "compatibility_flags": ["nodejs_compat"],
   "durable_objects": {
     "bindings": [
@@ -15,16 +18,16 @@
     }
   ],
   "d1_databases": [
-    { "binding": "DB", "database_name": "adp-registry", "database_id": "auto" }
+    { "binding": "DB", "database_name": "axiom-brain-db", "database_id": "44eab8d6-1201-4414-9626-effdefb05eae" }
   ],
   "kv_namespaces": [
-    { "binding": "SESSIONS", "id": "auto" }
+    { "binding": "SESSIONS", "id": "c0092d1f1620434abed80805156eed3c" }
   ],
   "r2_buckets": [
     { "binding": "ARTIFACTS", "bucket_name": "adp-artifacts" }
   ],
   "vectorize": [
-    { "binding": "MEMORY", "index_name": "adp-memory", "dimensions": 768, "metric": "cosine" }
+    { "binding": "MEMORY", "index_name": "adp-memory" }
   ],
   "ai": { "binding": "AI" },
   "send_email": [{ "name": "EMAIL", "remote": true }],
