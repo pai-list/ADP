@@ -66,11 +66,6 @@ pai-list/ADP/
 ## Quick Start
 
 ```bash
-# Install
-npm install -g @pai/adp
-
-# Start signaling server locally
-adp-signaling dev
 
 # Create ADP-enabled agent
 adp-agent create my-agent --workspace did:workspace:my-team
@@ -79,13 +74,19 @@ adp-agent create my-agent --workspace did:workspace:my-team
 adp-agent join my-agent --workspace did:workspace:my-team
 ```
 
-## Discovery Modes
+## 🟢 Live Deployment (2026-08-01)
 
-| Mode | Protocol | Use Case | Implementation |
-|------|----------|----------|----------------|
-| **Room Join** | WebSocket | Agents join named workspace | SnapDrop IP room pattern |
-| **Public Room** | WebSocket + DID | Open agent marketplace | PairDrop public room |
-| **Local mDNS** | HTTP/mDNS | Same-machine agent mesh | LocalSend mDNS pattern |
+| Endpoint | Status | Proof |
+|----------|--------|-------|
+| **Signaling Worker** | `signaling.axiomid.app` | 🟢 LIVE |
+| **Health Check** | `GET /health` | 🟢 `{"status":"ok","version":"0.2.0"}` |
+| **WebSocket** | `wss://signaling.axiomid.app/ws` | 🟢 HTTP 101 Switching Protocols |
+| **Agent Card** | `GET /.well-known/agent-card.json` | 🟢 Agent Card JSON |
+| **A2A Tasks** | `POST /a2a/tasks` | 🟢 Proper 400 validation |
+| **Debug Path** | `GET /debug-path` | 🟢 Echoes request path |
+| **WS Test** | `GET /ws-test` | 🟢 Routing verification |
+
+**Architecture:** Native `WebSocketPair` in Cloudflare Worker (bypasses Hono `upgradeWebSocket` tree-shaking). Custom domain route `signaling.axiomid.app/*` with wildcard `*.axiomid.app/*` redirect worker passthrough for `Upgrade: websocket`. Workers.dev blocked account-wide (error 1050).
 
 ## Core Protocol
 
