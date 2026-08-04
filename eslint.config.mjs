@@ -46,7 +46,12 @@ export default [
           alphabetize: { order: 'asc' },
         },
       ],
-      'import/no-unresolved': 'error',
+      'import/no-unresolved': [
+        'error',
+        {
+          ignore: ['cloudflare:workers'],
+        },
+      ],
       'import/no-cycle': 'error',
       'import/no-useless-path-segments': 'error',
       

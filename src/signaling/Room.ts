@@ -43,21 +43,21 @@ interface Env {
 }
 
 interface Ai {
-  run(model: string, options: { text?: string[]; prompt?: string; stream?: boolean }): Promise<any>;
+  run(model: string, options: { text?: string[]; prompt?: string; stream?: boolean }): Promise<unknown>;
 }
 
 export class ADPRoom extends DurableObject<Env> {
   private agents: Map<string, AgentInfo> = new Map();
   private sessions: Map<string, Session> = new Map();
-  private messageQueue: Map<string, any[]> = new Map();
+  private messageQueue: Map<string, unknown[]> = new Map();
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     ctx.blockConcurrencyWhile(async () => {
-      const stored = await ctx.storage.get<{ agents: any; sessions: any }>('room-state');
+      const stored = await ctx.storage.get<{ agents: unknown; sessions: unknown }>('room-state');
       if (stored) {
-        this.agents = new Map(Object.entries(stored.agents));
-        this.sessions = new Map(Object.entries(stored.sessions));
+        this.agents = new Map(Object.entries(stored.agents as Record<string, AgentInfo>));
+        this.sessions = new Map(Object.entries(stored.sessions as Record<string, Session>));
       }
     });
   }
@@ -130,7 +130,7 @@ export class ADPRoom extends DurableObject<Env> {
         protocol: 'adp-v1',
         agent: { did, displayName: agent.displayName }
       }, did);
-      
+
       // Clean up sessions involving this agent
       for (const [sessionId, session] of this.sessions) {
         if (session.initiator === did || session.responder === did) {
@@ -141,34 +141,37 @@ export class ADPRoom extends DurableObject<Env> {
     }
   }
 
-  private handleMessage(senderDID: string, message: any): void {
-    switch (message.type) {
+  private handleMessage(senderDID: string, message: unknown): void {
+    const msg = message as Record<string, unknown>;
+    const type = msg.type as string;
+
+    switch (type) {
       case 'discover':
-        this.handleDiscover(senderDID, message);
+        this.handleDiscover(senderDID, msg);
         break;
       case 'capability':
-        this.handleCapability(senderDID, message);
+        this.handleCapability(senderDID, msg);
         break;
       case 'session-request':
-        this.handleSessionRequest(senderDID, message);
+        this.handleSessionRequest(senderDID, msg);
         break;
       case 'session-accept':
-        this.handleSessionAccept(senderDID, message);
+        this.handleSessionAccept(senderDID, msg);
         break;
       case 'session-confirm':
-        this.handleSessionConfirm(senderDID, message);
+        this.handleSessionConfirm(senderDID, msg);
         break;
       case 'tool-share':
-        this.handleToolShare(senderDID, message);
+        this.handleToolShare(senderDID, msg);
         break;
       case 'memory-grant':
-        this.handleMemoryGrant(senderDID, message);
+        this.handleMemoryGrant(senderDID, msg);
         break;
       case 'a2a-message':
-        this.handleA2AMessage(senderDID, message);
+        this.handleA2AMessage(senderDID, msg);
         break;
       case 'a2a-task':
-        this.handleA2ATask(senderDID, message);
+        this.handleA2ATask(senderDID, msg);
         break;
       case 'leave':
         this.leave(senderDID);
@@ -183,22 +186,22 @@ export class ADPRoom extends DurableObject<Env> {
    * through the ADP room; we validate, attach the ADP session context,
    * and forward to the recipient.
    */
-  private handleA2AMessage(senderDID: string, message: any): void {
-    const recipientDID = message.recipient?.agentId || message.target;
+  private handleA2AMessage(senderDID: string, message: Record<string, unknown>): void {
+    const recipientDID = (message.recipient?.agentId as string) || (message.target as string);
     if (!recipientDID || !this.agents.has(recipientDID)) {
       console.warn(`[A2A] Recipient ${recipientDID} not in room`);
       return;
     }
     const sender = this.agents.get(senderDID);
     const a2aMessage = {
-      messageId: message.messageId || `${senderDID}-${Date.now()}`,
-      a2aVersion: message.a2aVersion || '0.2.1',
+      messageId: (message.messageId as string) || `${senderDID}-${Date.now()}`,
+      a2aVersion: (message.a2aVersion as string) || '0.2.1',
       sender: { agentId: senderDID, name: sender?.displayName },
       recipient: { agentId: recipientDID },
       parts: message.parts || [],
       context: message.context,
       'x-adp': {
-        sessionId: message['x-adp']?.sessionId || this.findSessionFor(senderDID, recipientDID),
+        sessionId: (message['x-adp']?.sessionId as string) || this.findSessionFor(senderDID, recipientDID),
         toolsGranted: message['x-adp']?.toolsGranted,
       },
     };
@@ -207,13 +210,13 @@ export class ADPRoom extends DurableObject<Env> {
   }
 
   /** Public RPC — called by the worker's HTTP /a2a/tasks endpoint. */
-  async rpcA2AMessage(senderDID: string, message: any): Promise<void> {
-    this.handleA2AMessage(senderDID, message);
+  async rpcA2AMessage(senderDID: string, message: unknown): Promise<void> {
+    this.handleA2AMessage(senderDID, message as Record<string, unknown>);
   }
 
   /** A2A task lifecycle — route tasks/send-style requests to the recipient. */
-  private handleA2ATask(senderDID: string, message: any): void {
-    const recipientDID = message.recipient?.agentId || message.target;
+  private handleA2ATask(senderDID: string, message: Record<string, unknown>): void {
+    const recipientDID = (message.recipient?.agentId as string) || (message.target as string);
     if (!recipientDID || !this.agents.has(recipientDID)) {
       console.warn(`[A2A] Task recipient ${recipientDID} not in room`);
       return;
@@ -222,7 +225,6 @@ export class ADPRoom extends DurableObject<Env> {
     recipient?.ws.send(JSON.stringify({ type: 'a2a-task', payload: message.payload || message }));
   }
 
-  /** Find an active session between two agents (or empty). */
   /** Find an active session between two agents (or empty). */
   private findSessionFor(a: string, b: string): string {
     for (const [sessionId, session] of this.sessions) {
@@ -235,7 +237,7 @@ export class ADPRoom extends DurableObject<Env> {
     return '';
   }
 
-  private handleDiscover(senderDID: string, message: any): void {
+  private handleDiscover(senderDID: string, message: Record<string, unknown>): void {
     const sender = this.agents.get(senderDID);
     if (sender) {
       this.sendToAgent(senderDID, {
@@ -254,18 +256,18 @@ export class ADPRoom extends DurableObject<Env> {
     }
   }
 
-  private handleCapability(senderDID: string, message: any): void {
+  private handleCapability(senderDID: string, message: Record<string, unknown>): void {
     const sender = this.agents.get(senderDID);
     if (sender) {
-      sender.capabilities = message.payload?.capabilities || sender.capabilities;
+      sender.capabilities = (message.payload?.capabilities as AgentInfo['capabilities']) || sender.capabilities;
       this.persist();
     }
   }
 
-  private handleSessionRequest(senderDID: string, message: any): void {
-    const targetDID = message.target || message.payload?.responder;
+  private handleSessionRequest(senderDID: string, message: Record<string, unknown>): void {
+    const targetDID = (message.target as string) || (message.payload?.responder as string);
     const target = this.agents.get(targetDID);
-    
+
     if (!target) {
       this.sendToAgent(senderDID, {
         type: 'session-reject',
@@ -281,8 +283,8 @@ export class ADPRoom extends DurableObject<Env> {
       initiator: senderDID,
       responder: targetDID,
       sharedSecret: this.generateSharedSecret(),
-      toolsGranted: message.payload?.tools || [],
-      memoryGranted: message.payload?.memory || [],
+      toolsGranted: (message.payload?.tools as string[]) || [],
+      memoryGranted: (message.payload?.memory as string[]) || [],
       status: 'pending',
       createdAt: Date.now(),
       expiresAt: Date.now() + 3600000
@@ -304,10 +306,10 @@ export class ADPRoom extends DurableObject<Env> {
     });
   }
 
-  private handleSessionAccept(senderDID: string, message: any): void {
-    const sessionId = message.sessionId;
+  private handleSessionAccept(senderDID: string, message: Record<string, unknown>): void {
+    const sessionId = message.sessionId as string;
     const session = this.sessions.get(sessionId);
-    
+
     if (!session || session.responder !== senderDID) {
       return;
     }
@@ -327,10 +329,10 @@ export class ADPRoom extends DurableObject<Env> {
     });
   }
 
-  private handleSessionConfirm(senderDID: string, message: any): void {
-    const sessionId = message.sessionId;
+  private handleSessionConfirm(senderDID: string, message: Record<string, unknown>): void {
+    const sessionId = message.sessionId as string;
     const session = this.sessions.get(sessionId);
-    
+
     if (session && session.initiator === senderDID) {
       session.status = 'active';
       this.persist();
@@ -344,8 +346,8 @@ export class ADPRoom extends DurableObject<Env> {
     }
   }
 
-  private handleToolShare(senderDID: string, message: any): void {
-    const targetDID = message.target;
+  private handleToolShare(senderDID: string, message: Record<string, unknown>): void {
+    const targetDID = message.target as string;
     this.sendToAgent(targetDID, {
       type: 'tool-grant',
       protocol: 'adp-v1',
@@ -354,8 +356,8 @@ export class ADPRoom extends DurableObject<Env> {
     });
   }
 
-  private handleMemoryGrant(senderDID: string, message: any): void {
-    const targetDID = message.target;
+  private handleMemoryGrant(senderDID: string, message: Record<string, unknown>): void {
+    const targetDID = message.target as string;
     this.sendToAgent(targetDID, {
       type: 'memory-grant',
       protocol: 'adp-v1',
@@ -364,7 +366,7 @@ export class ADPRoom extends DurableObject<Env> {
     });
   }
 
-  private sendToAgent(did: string, message: any): void {
+  private sendToAgent(did: string, message: Record<string, unknown>): void {
     const agent = this.agents.get(did);
     if (agent && agent.ws.readyState === WS_OPEN) {
       agent.ws.send(JSON.stringify(message));
@@ -376,7 +378,7 @@ export class ADPRoom extends DurableObject<Env> {
     }
   }
 
-  private broadcast(message: any, excludeDID?: string): void {
+  private broadcast(message: Record<string, unknown>, excludeDID?: string): void {
     for (const [did, agent] of this.agents) {
       if (did !== excludeDID && agent.ws.readyState === WS_OPEN) {
         agent.ws.send(JSON.stringify(message));
@@ -384,8 +386,8 @@ export class ADPRoom extends DurableObject<Env> {
     }
   }
 
-  private async persist(): Promise<void> {
-    await this.ctx.storage.put('room-state', {
+  private persist(): void {
+    void this.ctx.storage.put('room-state', {
       agents: Object.fromEntries(this.agents),
       sessions: Object.fromEntries(this.sessions)
     });
@@ -397,3 +399,6 @@ export class ADPRoom extends DurableObject<Env> {
     return Array.from(array).map(b => b.toString(16).padStart(2, '0')).join('');
   }
 }
+
+// Reserved for Cloudflare Workers module resolution
+const CLOUDFLARE_WORKERS = 'cloudflare:workers';
