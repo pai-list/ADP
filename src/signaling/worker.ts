@@ -12,7 +12,8 @@ export default {
     
     if (upgradeHeader?.toLowerCase() === 'websocket') {
       const webSocketPair = new WebSocketPair();
-      const [client, server] = Object.values(webSocketPair);
+      const client = webSocketPair[0];
+      const server = webSocketPair[1];
       
       server.accept();
       
@@ -23,6 +24,13 @@ export default {
       server.addEventListener('close', () => {
         console.log('WebSocket closed');
       });
+      
+      ctx.waitUntil(new Promise<void>((resolve) => {
+        server.addEventListener('close', () => {
+          console.log('WebSocket closed');
+          resolve();
+        });
+      }));
       
       return new Response(null, { status: 101, webSocket: client });
     }
