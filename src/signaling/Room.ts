@@ -223,10 +223,12 @@ export class ADPRoom extends DurableObject<Env> {
   }
 
   /** Find an active session between two agents (or empty). */
+  /** Find an active session between two agents (or empty). */
   private findSessionFor(a: string, b: string): string {
     for (const [sessionId, session] of this.sessions) {
       if ((session.initiator === a && session.responder === b) ||
-          (session.initiator === b && session.responder === a)) {
+          (session.initiator === b && session.responder === a) &&
+          session.status === 'active' && session.expiresAt > Date.now()) {
         return sessionId;
       }
     }
