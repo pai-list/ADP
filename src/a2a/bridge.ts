@@ -154,7 +154,7 @@ export function adpSessionToAgentCard(input: {
     url: signalingEndpoint,
     provider: {
       organization: "PAI",
-      url: "https://pai.build",
+      url: "https://axiomid.app",
     },
     capabilities: {
       methods: ["tasks/send", "tasks/get", "tasks/cancel"],

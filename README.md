@@ -69,7 +69,7 @@ wrangler deploy
 ## Deployment
 
 - **Platform:** Cloudflare Workers + Durable Objects
-- **Domain:** `adp.pai.build` (pending `pai.build` domain)
+- **Domain:** `adp.axiomid.app` (pending `axiomid.app` domain)
 - **DNS:** Cloudflare (proxied)
 
 ---
