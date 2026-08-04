@@ -19,7 +19,7 @@ const sampleAgent = {
     models: ['qwen-72b'],
   },
   workspace: 'alpha',
-  signalingEndpoint: 'wss://adp.pai.build/ws',
+  signalingEndpoint: 'wss://adp.axiomid.app/ws',
 };
 
 describe('adpSessionToAgentCard', () => {
