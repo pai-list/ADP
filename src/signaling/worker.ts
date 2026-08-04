@@ -1,41 +1,40 @@
-// ADP Signaling Worker - Cloudflare Worker entry point
-import { Hono } from 'hono';
-import { cors } from 'hono/cors';
-import { upgradeWebSocket } from 'hono/cloudflare-workers';
-
-interface Env {
-  ADP_ROOM: DurableObjectNamespace;
-  DB: D1Database;
-  SESSIONS: KVNamespace;
-  AI: Ai;
+// Minimal WebSocket test worker with DO export
+export class ADPRoom {
+  // Minimal DO for migration compatibility
+  async fetch(request: Request): Promise<Response> {
+    return new Response('DO not used in test');
+  }
 }
 
-const app = new Hono<{ Bindings: Env }>();
-
-app.use('*', cors());
-
-// Health check
-app.get('/health', (c) => c.json({ status: 'ok', service: 'adp-signaling', version: '0.1.0' }));
-
-// WebSocket endpoint for ADP signaling
-app.get('/ws', upgradeWebSocket((c) => {
-  return {
-    onMessage: async (evt, ws) => {
-      try {
-        const data = evt.data instanceof Blob ? await evt.data.text() : String(evt.data);
-        const message = JSON.parse(data);
-        const room = c.env.ADP_ROOM.idFromName(message.room || 'default');
-        const stub = c.env.ADP_ROOM.get(room);
-        await stub.join(message.did || 'unknown', ws, message);
-      } catch (error) {
-        console.error('Message parse error:', error);
-        ws.send(JSON.stringify({ type: 'error', message: 'Invalid message format' }));
-      }
-    },
-    onClose: () => {
-      // Handle cleanup if needed
+export default {
+  async fetch(request: Request, env: unknown, ctx: ExecutionContext): Promise<Response> {
+    const upgradeHeader = request.headers.get('Upgrade');
+    
+    if (upgradeHeader?.toLowerCase() === 'websocket') {
+      const webSocketPair = new WebSocketPair();
+      const client = webSocketPair[0];
+      const server = webSocketPair[1];
+      
+      server.accept();
+      
+      server.addEventListener('message', (event) => {
+        server.send(`Echo: ${event.data}`);
+      });
+      
+      server.addEventListener('close', () => {
+        console.log('WebSocket closed');
+      });
+      
+      ctx.waitUntil(new Promise<void>((resolve) => {
+        server.addEventListener('close', () => {
+          console.log('WebSocket closed');
+          resolve();
+        });
+      }));
+      
+      return new Response(null, { status: 101, webSocket: client });
     }
-  };
-}));
-
-export default app;
+    
+    return new Response('Send WebSocket upgrade', { status: 200 });
+  }
+};
