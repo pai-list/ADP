@@ -1,0 +1,203 @@
+# CodeRabbit Configuration for ADP
+# https://docs.coderabbit.ai/configuration/coderabbit-yaml
+
+# Language settings
+language: "typescript"
+
+# Review profile - balanced for protocol development
+review_profile: "balanced"
+
+# Paths to include/exclude
+include:
+  - "src/**/*.ts"
+  - "tests/**/*.ts"
+  - "*.config.ts"
+  - "*.config.mjs"
+  - "package.json"
+  - "tsconfig.json"
+  - "wrangler.jsonc"
+  - ".github/workflows/**/*.yml"
+
+exclude:
+  - "dist/**"
+  - "node_modules/**"
+  - ".wrangler/**"
+  - ".turbo/**"
+  - "*.test.ts"
+  - "*.spec.ts"
+  - "mocks/**"
+
+# Review settings
+review:
+  # Enable auto-review on PR open/update
+  auto_review:
+    enabled: true
+    on_open: true
+    on_update: true
+
+  # Request review on draft PRs
+  request_review_on_draft: false
+
+  # High-level review settings
+  high_level_summary: true
+  poem: false
+
+  # Review categories to enable
+  categories:
+    - "security"
+    - "performance"
+    - "correctness"
+    - "style"
+    - "best_practices"
+    - "documentation"
+    - "testing"
+
+# Path-specific instructions for CodeRabbit
+path_instructions:
+  - path: "src/signaling/**"
+    instructions: |
+      This is the Cloudflare Worker + Durable Object signaling layer.
+      - Check for proper WebSocket handling and connection lifecycle
+      - Verify Durable Object state management (no race conditions)
+      - Ensure authentication/authorization checks on all message handlers
+      - Validate WebSocket message schemas with Zod
+      - Check for proper error handling and logging
+
+  - path: "src/protocol/**"
+    instructions: |
+      Core ADP protocol types and validation.
+      - Verify Zod schemas match protocol specification
+      - Check for proper message type discrimination
+      - Ensure session negotiation handles edge cases (reconnect, timeout)
+      - Validate capability broadcast types
+      - Check transport abstraction doesn't leak implementation details
+
+  - path: "src/identity/**"
+    instructions: |
+      DID operations, Ed25519 keys, and verification.
+      - Verify cryptographic operations use constant-time comparisons
+      - Check DID document generation follows W3C spec
+      - Ensure key derivation uses proper entropy
+      - Validate verification logic handles malformed inputs
+      - Check for proper error types (not generic Error)
+
+  - path: "src/discovery/**"
+    instructions: |
+      Discovery modes (room, public, mDNS) - SnapDrop/PairDrop/LocalSend patterns.
+      - Verify room join/leave handles concurrent access
+      - Check public room listing doesn't leak private info
+      - Validate mDNS service advertisement format
+      - Ensure discovery timeouts are configurable
+
+  - path: "src/sharing/**"
+    instructions: |
+      MCP tool sharing and memory access grants.
+      - Verify capability-based access control
+      - Check grant/revoke operations are atomic
+      - Ensure memory access respects consent boundaries
+      - Validate tool sharing doesn't exceed scope
+
+  - path: "src/a2a/**"
+    instructions: |
+      A2A (Agent-to-Agent) bridge layer.
+      - Verify message translation preserves semantics
+      - Check error mapping between ADP and A2A protocols
+      - Ensure connection lifecycle handles partial failures
+
+  - path: "tests/**"
+    instructions: |
+      Test files - focus on coverage and correctness.
+      - Check for proper test isolation (no shared state)
+      - Verify mocks match real implementation behavior
+      - Ensure edge cases are covered (timeouts, errors, concurrent)
+      - Validate test names describe the behavior being tested
+
+  - path: "wrangler.jsonc"
+    instructions: |
+      Cloudflare Workers configuration.
+      - Verify Durable Object bindings match class names
+      - Check compatibility_date is recent
+      - Ensure KV/R2/D1 bindings are typed correctly
+      - Validate route patterns match domain structure
+
+  - path: ".github/workflows/**"
+    instructions: |
+      CI/CD workflows.
+      - Check for proper permissions (least privilege)
+      - Verify reusable workflow versions are pinned
+      - Ensure secrets are not hardcoded
+      - Validate matrix strategies cover supported Node versions
+
+# Custom rules for ADP
+rules:
+  # Security rules
+  - pattern: "crypto\.getRandomValues|Math\.random\(\)"
+    message: "Use crypto.getRandomValues() for cryptographic randomness, not Math.random()"
+    severity: "error"
+    category: "security"
+
+  - pattern: "eval\(|Function\(|setTimeout\(.*string"
+    message: "Avoid dynamic code execution - security risk"
+    severity: "error"
+    category: "security"
+
+  # TypeScript/Protocol rules
+  - pattern: "@typescript-eslint/no-explicit-any.*off"
+    message: "Avoid disabling no-explicit-any - use unknown or proper types"
+    severity: "warn"
+    category: "correctness"
+
+  - pattern: "zod\.object\(\{.*\.optional\(\)"
+    message: "Optional fields in protocol schemas should have explicit defaults"
+    severity: "warn"
+    category: "correctness"
+
+  # Cloudflare Workers rules
+  - pattern: "console\.log\("
+    message: "Use structured logging (logger.info) instead of console.log in Workers"
+    severity: "warn"
+    category: "style"
+
+  - pattern: "await.*\.put\(|await.*\.get\("
+    message: "Verify Durable Object/KV operations have proper error handling"
+    severity: "info"
+    category: "correctness"
+
+  # Testing rules
+  - pattern: "test\.skip|test\.only|describe\.skip"
+    message: "Skipped/only tests should be resolved before merge"
+    severity: "warn"
+    category: "testing"
+
+  - pattern: "vi\.mock\(|jest\.mock\("
+    message: "Verify mocks match actual implementation signatures"
+    severity: "info"
+    category: "testing"
+
+# Labels for PR classification
+labels:
+  - "protocol"
+  - "signaling"
+  - "identity"
+  - "discovery"
+  - "sharing"
+  - "a2a"
+  - "infra"
+  - "docs"
+  - "test"
+  - "security"
+
+# Notification settings
+notifications:
+  github_pr_review: true
+  github_pr_comment: true
+  slack:
+    enabled: false
+  email:
+    enabled: false
+
+# Branch protection integration
+branch_protection:
+  require_code_review: true
+  require_ci_pass: true
+  dismiss_stale_reviews: true

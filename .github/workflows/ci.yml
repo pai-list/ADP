@@ -72,16 +72,31 @@ jobs:
           name: dependency-audit
           path: audit.json
 
+  coderabbit-review:
+    name: CodeRabbit Review
+    needs: detect
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: CodeRabbit Review
+        uses: coderabbitai/code-review-action@v1
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          coderabbit_config: .coderabbit.yaml
+
   all-checks:
     name: All Checks Passed
-    needs: [detect, mono-ci, cf-workers-ci, security-scan, dependency-audit]
+    needs: [detect, mono-ci, cf-workers-ci, security-scan, dependency-audit, coderabbit-review]
     if: always()
     runs-on: ubuntu-latest
     steps:
       - name: Check results
         run: |
           FAILED=0
-          for job in mono-ci cf-workers-ci security-scan dependency-audit; do
+          for job in mono-ci cf-workers-ci security-scan dependency-audit coderabbit-review; do
             RESULT="${{ needs.$job.result }}"
             if [[ "$RESULT" == "failure" || "$RESULT" == "cancelled" ]]; then
               echo "❌ $job: $RESULT"
