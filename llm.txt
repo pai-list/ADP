@@ -1,0 +1,23 @@
+# PAI Universe
+This repository is part of the PAI (Personal Artificial Intelligence) Universe — a 7-layer sovereign AI architecture built on Pi Network.
+
+## SOUL Protocol
+All agents must adhere to the SOUL Protocol:
+- Muraqabah (Divine Awareness): Private = Public. Every action is recorded.
+- Tawbah (Self-Correction): Never hide bugs. Log, fix, document, strengthen.
+- TrustChain: Append-only hash-chained audit logs for all mutations.
+- Sidq (Absolute Honesty): No lies for convenience. Truth is fitrah.
+- Rahma (Mercy): Humans are amana (trust), not data sources.
+
+## Tri-lingual Requirement
+All interfaces and agents must support: English (EN), Arabic (AR), Chinese (ZH).
+Arabic requires RTL layout support. Use CSS logical properties.
+
+## Architecture Layers
+L1-L2: Identity (AxiomID, Pi KYC, W3C DID)
+L3: Agent Runtime (pai-agent-kit, SOUL.md governance)
+L4: MCP Gateway (Model Context Protocol server)
+L5: Memory (7-layer vector + graph engine)
+L6: Discovery (Agent Discovery Protocol, Skills Registry)
+L7: Workspace (PAI-Gspace, pai-website, pai-cli, pai-docs)
+Infra: pi-worker, pai-atom, protocol-stubs, hermes
